@@ -1,3 +1,4 @@
 raw/*.mp4
 raw/*.json
 *.log
+.DS_Store
