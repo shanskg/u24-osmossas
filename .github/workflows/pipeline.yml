@@ -1,0 +1,196 @@
+name: U24 × OSMOSSAS Pipeline
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'  # Every 2 hours at :17
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pipeline"
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install Pillow
+          python3 -m pip install -U yt-dlp
+
+      - name: Generate branding assets
+        run: |
+          cd scripts
+          python3 logo_generator.py
+
+      - name: Download United24 Shorts
+        run: |
+          cd scripts
+          LIMIT=12 python3 download_gha.py
+
+      - name: Apply OSMOSSAS branding
+        run: |
+          cd scripts
+          python3 overlay.py
+
+      - name: Rotate & generate gallery
+        run: |
+          cd scripts
+          python3 -c "
+import json, os
+from pathlib import Path
+
+WORKSPACE = Path('.')
+OUTPUT_DIR = WORKSPACE / 'output' / 'videos'
+TOP_DIR = OUTPUT_DIR / 'top'
+MAX_TOTAL = 150
+MAX_TOP = 10
+
+# Rotate
+OUTPUT_DIR.mkdir(exist_ok=True)
+TOP_DIR.mkdir(exist_ok=True)
+
+all_videos = sorted([f for f in OUTPUT_DIR.glob('*.mp4') if f.is_file()], key=lambda f: f.stat().st_mtime, reverse=True)
+top_videos = sorted([f for f in TOP_DIR.glob('*.mp4') if f.is_file()], key=lambda f: f.stat().st_mtime, reverse=True)
+
+if len(top_videos) > MAX_TOP:
+    for old in top_videos[MAX_TOP:]:
+        old.unlink()
+
+main_cap = MAX_TOTAL - len(list(TOP_DIR.glob('*.mp4')))
+if len(all_videos) > main_cap:
+    for old in all_videos[main_cap:]:
+        old.unlink()
+
+# Generate gallery
+meta_file = WORKSPACE / 'output' / 'videos_meta.json'
+if meta_file.exists():
+    with open(meta_file) as f:
+        meta = json.load(f)
+else:
+    meta = {}
+
+videos = []
+for vid_id, entry in meta.items():
+    if entry.get('status') != 'branded':
+        continue
+    out_path = WORKSPACE / entry.get('output_path', '')
+    if not out_path.exists():
+        continue
+    videos.append({
+        'id': vid_id,
+        'title': entry.get('title', vid_id),
+        'file': f'videos/{vid_id}.mp4',
+        'thumbnail': entry.get('thumbnail', ''),
+        'date': entry.get('upload_date', ''),
+    })
+
+videos.sort(key=lambda x: x['date'], reverse=True)
+
+cards = []
+for v in videos:
+    title = v['title'].replace('\"', '&quot;')
+    date_str = f\"{v['date'][:4]}-{v['date'][4:6]}-{v['date'][6:]}\" if len(v['date']) == 8 else 'Unknown'
+    cards.append(f'''<div class=\"card\">
+  <video controls preload=\"metadata\" poster=\"{v['thumbnail']}\" playsinline>
+    <source src=\"{v['file']}\" type=\"video/mp4\">
+  </video>
+  <div class=\"info\">
+    <h3>{title}</h3>
+    <div class=\"meta\">📅 {date_str} | United24 × OSMOSSAS</div>
+    <a href=\"{v['file']}\" download class=\"dl\">⬇ Download</a>
+  </div>
+</div>''')
+
+html = f'''<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"UTF-8\">
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
+<title>OSMOSSAS × United24 — Branded Shorts</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }}
+.header {{ text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%); border-bottom: 2px solid #c83250; }}
+.header h1 {{ font-size: 2.2rem; margin-bottom: 8px; }}
+.header span {{ color: #c83250; }}
+.header p {{ color: #888; font-size: 0.95rem; }}
+.grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; padding: 30px; max-width: 1400px; margin: 0 auto; }}
+.card {{ background: #151515; border-radius: 12px; overflow: hidden; border: 1px solid #222; transition: transform 0.2s, border-color 0.2s; }}
+.card:hover {{ transform: translateY(-4px); border-color: #c83250; }}
+.card video {{ width: 100%; aspect-ratio: 9/16; object-fit: cover; display: block; background: #000; }}
+.card .info {{ padding: 16px; }}
+.card h3 {{ font-size: 1rem; margin-bottom: 8px; line-height: 1.4; }}
+.card .meta {{ font-size: 0.8rem; color: #888; margin-bottom: 12px; }}
+.card .dl {{ display: inline-block; background: #c83250; color: #fff; padding: 6px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; }}
+.card .dl:hover {{ background: #e04060; }}
+.empty {{ text-align: center; padding: 80px 20px; color: #555; }}
+.empty h2 {{ color: #c83250; margin-bottom: 12px; }}
+.footer {{ text-align: center; padding: 30px; color: #555; font-size: 0.85rem; }}
+</style>
+</head>
+<body>
+<div class=\"header\">
+  <h1><span>OSMOSSAS</span> × United24</h1>
+  <p>Branded Shorts | Credit to @united24media | Auto-generated gallery</p>
+</div>
+<div class=\"grid\">
+{chr(10).join(cards) if cards else '<div class=\"empty\"><h2>🎬 No videos yet</h2><p>Pipeline is running — check back soon!</p></div>'}
+</div>
+<div class=\"footer\">
+  <p>Content from <a href=\"https://youtube.com/@united24media\" style=\"color:#c83250;text-decoration:none;\">@united24media</a> — Branded by OSMOSSAS</p>
+</div>
+</body>
+</html>'''
+
+with open(WORKSPACE / 'output' / 'index.html', 'w') as f:
+    f.write(html)
+
+print(f'Gallery: {len(cards)} cards')
+"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/videos/ output/index.html output/videos_meta.json
+          git diff --cached --quiet || git commit -m "auto: U24 shorts $(date +%Y%m%d-%H%M)"
+          git push
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './output'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: pipeline
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
