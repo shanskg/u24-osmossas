@@ -7,8 +7,12 @@ OUTPUT_DIR = Path("../output")
 META_FILE = OUTPUT_DIR / "videos_meta.json"
 
 def main():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     if not META_FILE.exists():
-        print("No meta file")
+        print("No meta file yet")
+        # Write empty gallery
+        write_gallery([])
         return
 
     with open(META_FILE) as f:
@@ -30,7 +34,10 @@ def main():
         })
 
     videos.sort(key=lambda x: x["date"], reverse=True)
+    write_gallery(videos)
+    print(f"Gallery: {len(videos)} cards")
 
+def write_gallery(videos):
     cards = []
     for v in videos:
         title = v["title"].replace('"', '&quot;')
@@ -45,6 +52,11 @@ def main():
     <a href="{v['file']}" download class="dl">⬇ Download</a>
   </div>
 </div>''')
+
+    cards_html = "\n".join(cards) if cards else '''<div class="empty">
+  <h2>🎬 No videos yet</h2>
+  <p>Pipeline is running — check back soon!</p>
+</div>'''
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -79,7 +91,7 @@ body {{ background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSy
   <p>Branded Shorts | Credit to @united24media | Auto-generated gallery</p>
 </div>
 <div class="grid">
-{chr(10).join(cards) if cards else '<div class="empty"><h2>🎬 No videos yet</h2><p>Pipeline is running — check back soon!</p></div>'}
+{cards_html}
 </div>
 <div class="footer">
   <p>Content from <a href="https://youtube.com/@united24media" style="color:#c83250;text-decoration:none;">@united24media</a> — Branded by OSMOSSAS</p>
@@ -89,8 +101,6 @@ body {{ background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSy
 
     with open(OUTPUT_DIR / "index.html", "w") as f:
         f.write(html)
-
-    print(f"Gallery: {len(cards)} cards")
 
 if __name__ == "__main__":
     main()
