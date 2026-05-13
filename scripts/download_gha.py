@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-United24 Shorts Scraper — Works on GitHub Actions runners
-(YouTube blocks cloud IPs, but GitHub Actions runners usually work)
+United24 Shorts Scraper for GitHub Actions
+GitHub Actions runners have IPs that YouTube doesn't block.
 """
 import os
 import sys
@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "./output/raw"))
-META_FILE = Path(os.environ.get("META_FILE", "./output/videos_meta.json"))
+OUTPUT_DIR = Path("./output/raw")
+META_FILE = Path("./output/videos_meta.json")
 LIMIT = int(os.environ.get("LIMIT", "12"))
 
 def log(msg):

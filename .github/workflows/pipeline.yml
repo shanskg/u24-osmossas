@@ -2,7 +2,7 @@ name: U24 × OSMOSSAS Pipeline
 
 on:
   schedule:
-    - cron: '17 */2 * * *'  # Every 2 hours at :17
+    - cron: '17 */2 * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -41,6 +41,7 @@ jobs:
         run: |
           cd scripts
           python3 logo_generator.py
+          cp -r ../assets ../output/ 2>/dev/null || true
 
       - name: Download United24 Shorts
         run: |
@@ -52,7 +53,7 @@ jobs:
           cd scripts
           python3 overlay.py
 
-      - name: Rotate & generate gallery
+      - name: Rotate videos
         run: |
           cd scripts
           python3 -c "
@@ -60,12 +61,11 @@ import json, os
 from pathlib import Path
 
 WORKSPACE = Path('.')
-OUTPUT_DIR = WORKSPACE / 'output' / 'videos'
+OUTPUT_DIR = WORKSPACE / '..' / 'output' / 'videos'
 TOP_DIR = OUTPUT_DIR / 'top'
 MAX_TOTAL = 150
 MAX_TOP = 10
 
-# Rotate
 OUTPUT_DIR.mkdir(exist_ok=True)
 TOP_DIR.mkdir(exist_ok=True)
 
@@ -81,19 +81,32 @@ if len(all_videos) > main_cap:
     for old in all_videos[main_cap:]:
         old.unlink()
 
-# Generate gallery
-meta_file = WORKSPACE / 'output' / 'videos_meta.json'
-if meta_file.exists():
-    with open(meta_file) as f:
-        meta = json.load(f)
-else:
-    meta = {}
+print(f'Rotated: {min(len(all_videos), main_cap)} main + {len(list(TOP_DIR.glob(\"*.mp4\")))} top')
+"
+
+      - name: Generate gallery
+        run: |
+          cd scripts
+          python3 -c "
+import json
+from pathlib import Path
+
+WORKSPACE = Path('.')
+OUTPUT_DIR = WORKSPACE / '..' / 'output'
+meta_file = OUTPUT_DIR / 'videos_meta.json'
+
+if not meta_file.exists():
+    print('No meta file')
+    exit(0)
+
+with open(meta_file) as f:
+    meta = json.load(f)
 
 videos = []
 for vid_id, entry in meta.items():
     if entry.get('status') != 'branded':
         continue
-    out_path = WORKSPACE / entry.get('output_path', '')
+    out_path = OUTPUT_DIR / entry.get('output_path', '')
     if not out_path.exists():
         continue
     videos.append({
@@ -162,7 +175,7 @@ body {{ background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSy
 </body>
 </html>'''
 
-with open(WORKSPACE / 'output' / 'index.html', 'w') as f:
+with open(OUTPUT_DIR / 'index.html', 'w') as f:
     f.write(html)
 
 print(f'Gallery: {len(cards)} cards')
@@ -172,7 +185,7 @@ print(f'Gallery: {len(cards)} cards')
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add output/videos/ output/index.html output/videos_meta.json
+          git add output/
           git diff --cached --quiet || git commit -m "auto: U24 shorts $(date +%Y%m%d-%H%M)"
           git push
 

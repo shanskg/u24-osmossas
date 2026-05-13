@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
 """
 Overlay OSMOSSAS branding on United24 Shorts.
-Keeps original U24 logos intact. Adds our watermark + badge.
-Output: 1080x1920 MP4, H.264
 """
 import os
 import sys
 import json
 import subprocess
-import shutil
 from pathlib import Path
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace/u24-scraper"))
+WORKSPACE = Path(".")
 META_FILE = WORKSPACE / "output" / "videos_meta.json"
 RAW_DIR = WORKSPACE / "output" / "raw"
 OUTPUT_DIR = WORKSPACE / "output" / "videos"
@@ -21,8 +18,7 @@ ASSETS_DIR = WORKSPACE / "assets"
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] {msg}"
-    print(line)
+    print(f"[{ts}] {msg}")
 
 def load_meta():
     if META_FILE.exists():
@@ -35,7 +31,6 @@ def save_meta(meta):
         json.dump(meta, f, indent=2)
 
 def get_video_info(path):
-    """Get width, height, duration via ffprobe."""
     cmd = [
         "ffprobe", "-v", "error",
         "-select_streams", "v:0",
@@ -56,15 +51,7 @@ def get_video_info(path):
         "duration": float(fmt.get("duration", 0)),
     }
 
-def overlay_video(video_id, meta_entry, limit=None):
-    """
-    Overlay OSMOSSAS branding on a single video.
-    Strategy:
-    - Keep original video centered (with padding if not 9:16)
-    - Add OSMOSSAS watermark at bottom center
-    - Add corner badge (top-right)
-    - Add subtle top/bottom brand bars if video is not full 9:16
-    """
+def overlay_video(video_id, meta_entry):
     raw_path = WORKSPACE / meta_entry["raw_path"]
     if not raw_path.exists():
         log(f"[Overlay] Missing raw file for {video_id}")
@@ -80,70 +67,44 @@ def overlay_video(video_id, meta_entry, limit=None):
         log(f"[Overlay] Already exists: {out_path.name}")
         return True
     
-    # Load assets
-    badge = None
-    watermark = None
     badge_path = ASSETS_DIR / "badge.png"
     wm_path = ASSETS_DIR / "watermark.png"
-    if badge_path.exists():
-        badge = Image.open(badge_path).convert("RGBA")
-    if wm_path.exists():
-        watermark = Image.open(wm_path).convert("RGBA")
     
     vw, vh = info["width"], info["height"]
-    duration = info["duration"]
-    
-    # Target: 1080x1920 (9:16)
     TW, TH = 1080, 1920
     
-    # Calculate scaling to fit video into target while preserving aspect
     scale = min(TW / vw, TH / vh)
     new_w = int(vw * scale)
     new_h = int(vh * scale)
-    
-    # Center position
     off_x = (TW - new_w) // 2
     off_y = (TH - new_h) // 2
     
-    # Build ffmpeg filter_complex
     filters = []
-    
-    # Scale video to fit
     filters.append(f"[0:v]scale={new_w}:{new_h}:force_original_aspect_ratio=decrease[scaled]")
-    
-    # Pad to target size with black (or dark brand color)
     filters.append(f"[scaled]pad={TW}:{TH}:{off_x}:{off_y}:color=0x111111[padded]")
     
-    # Add badge overlay (top-right, with padding)
+    badge = Image.open(badge_path).convert("RGBA") if badge_path.exists() else None
+    watermark = Image.open(wm_path).convert("RGBA") if wm_path.exists() else None
+    
+    last = "padded"
+    input_idx = 1
+    
     if badge:
         bw, bh = badge.size
         badge_x = TW - bw - 20
         badge_y = 20
-        badge_path_str = str(badge_path)
-        filters.append(
-            f"[padded][1:v]overlay={badge_x}:{badge_y}:format=auto[badged]"
-        )
+        filters.append(f"[{last}][{input_idx}:v]overlay={badge_x}:{badge_y}:format=auto[badged]")
         last = "badged"
-    else:
-        last = "padded"
+        input_idx += 1
     
-    # Add watermark overlay (bottom-center)
     if watermark:
         ww, wh = watermark.size
         wm_x = (TW - ww) // 2
         wm_y = TH - wh - 25
-        wm_path_str = str(wm_path)
-        if badge:
-            filters.append(
-                f"[{last}][2:v]overlay={wm_x}:{wm_y}:format=auto[final]"
-            )
-        else:
-            filters.append(
-                f"[{last}][1:v]overlay={wm_x}:{wm_y}:format=auto[final]"
-            )
+        filters.append(f"[{last}][{input_idx}:v]overlay={wm_x}:{wm_y}:format=auto[final]")
         last = "final"
+        input_idx += 1
     
-    # Build full command
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-i", str(raw_path),
@@ -156,16 +117,10 @@ def overlay_video(video_id, meta_entry, limit=None):
         "-b:a", "128k",
     ]
     
-    # Add overlay inputs right after the video input
-    insert_idx = cmd.index("-i", 0) + 2  # position after "-i <raw_path>"
     if badge:
-        cmd.insert(insert_idx, "-i")
-        cmd.insert(insert_idx + 1, str(badge_path))
-        insert_idx += 2
+        cmd.extend(["-i", str(badge_path)])
     if watermark:
-        cmd.insert(insert_idx, "-i")
-        cmd.insert(insert_idx + 1, str(wm_path))
-        insert_idx += 2
+        cmd.extend(["-i", str(wm_path)])
     
     if badge or watermark:
         cmd.extend(["-filter_complex", ";".join(filters), "-map", f"[{last}]"])
@@ -181,7 +136,6 @@ def overlay_video(video_id, meta_entry, limit=None):
             out_path.unlink()
         return False
     
-    # Update meta
     meta_entry["status"] = "branded"
     meta_entry["output_path"] = str(out_path.relative_to(WORKSPACE))
     meta_entry["branded_at"] = datetime.now().isoformat()
@@ -202,7 +156,7 @@ def run_overlay(limit=None):
         if entry.get("status") != "downloaded":
             continue
         
-        success = overlay_video(vid_id, entry, limit)
+        success = overlay_video(vid_id, entry)
         if success:
             processed += 1
         else:

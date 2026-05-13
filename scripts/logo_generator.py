@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-ASSETS_DIR = Path(os.path.expanduser("~/.openclaw/workspace/u24-scraper/assets"))
+ASSETS_DIR = Path("./assets")
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_font(size, bold=True):
@@ -22,11 +22,8 @@ def get_font(size, bold=True):
     return ImageFont.load_default()
 
 def create_watermark():
-    """Transparent watermark: @osmossas"""
     text = "@osmossas"
     font = get_font(28)
-    
-    # Measure text
     dummy = Image.new("RGBA", (1, 1))
     d = ImageDraw.Draw(dummy)
     bbox = d.textbbox((0, 0), text, font=font)
@@ -34,8 +31,6 @@ def create_watermark():
     
     img = Image.new("RGBA", (w + 20, h + 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    
-    # Subtle dark background pill
     d.rounded_rectangle([0, 0, w + 20, h + 16], radius=8, fill=(0, 0, 0, 120))
     d.text((10, 6), text, font=font, fill=(255, 255, 255, 220))
     
@@ -44,16 +39,13 @@ def create_watermark():
     return path
 
 def create_corner_badge():
-    """Small corner badge: OSMOSSAS"""
     text = "OSMOSSAS"
     font = get_font(18)
-    
     dummy = Image.new("RGBA", (1, 1))
     d = ImageDraw.Draw(dummy)
     bbox = d.textbbox((0, 0), text, font=font)
     w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     
-    # Badge with brand color (subtle pink/red)
     img = Image.new("RGBA", (w + 24, h + 14), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([0, 0, w + 24, h + 14], radius=6, fill=(200, 50, 80, 180))
@@ -64,10 +56,8 @@ def create_corner_badge():
     return path
 
 def create_logo_full():
-    """Full logo for gallery / branding"""
     text = "OSMOSSAS"
     font = get_font(48)
-    
     dummy = Image.new("RGBA", (1, 1))
     d = ImageDraw.Draw(dummy)
     bbox = d.textbbox((0, 0), text, font=font)

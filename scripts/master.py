@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-WORKSPACE = Path(os.path.expanduser("~/.openclaw/workspace/u24-scraper"))
+WORKSPACE = Path(".")
 LOG_FILE = WORKSPACE / "logs" / "pipeline.log"
 OUTPUT_DIR = WORKSPACE / "output" / "videos"
 TOP_DIR = OUTPUT_DIR / "top"
