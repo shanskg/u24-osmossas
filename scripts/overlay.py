@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Overlay OSMOSSAS branding on United24 Shorts.
+Keeps original U24 logos intact. Adds our watermark + badge.
+Output: 1080x1920 MP4, H.264
 """
 import os
 import sys
@@ -8,7 +10,7 @@ import json
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 WORKSPACE = Path(".")
 META_FILE = WORKSPACE / "output" / "videos_meta.json"
@@ -83,13 +85,11 @@ def overlay_video(video_id, meta_entry):
     filters.append(f"[0:v]scale={new_w}:{new_h}:force_original_aspect_ratio=decrease[scaled]")
     filters.append(f"[scaled]pad={TW}:{TH}:{off_x}:{off_y}:color=0x111111[padded]")
     
-    badge = Image.open(badge_path).convert("RGBA") if badge_path.exists() else None
-    watermark = Image.open(wm_path).convert("RGBA") if wm_path.exists() else None
-    
     last = "padded"
     input_idx = 1
     
-    if badge:
+    if badge_path.exists():
+        badge = Image.open(badge_path)
         bw, bh = badge.size
         badge_x = TW - bw - 20
         badge_y = 20
@@ -97,7 +97,8 @@ def overlay_video(video_id, meta_entry):
         last = "badged"
         input_idx += 1
     
-    if watermark:
+    if wm_path.exists():
+        watermark = Image.open(wm_path)
         ww, wh = watermark.size
         wm_x = (TW - ww) // 2
         wm_y = TH - wh - 25
@@ -117,12 +118,12 @@ def overlay_video(video_id, meta_entry):
         "-b:a", "128k",
     ]
     
-    if badge:
+    if badge_path.exists():
         cmd.extend(["-i", str(badge_path)])
-    if watermark:
+    if wm_path.exists():
         cmd.extend(["-i", str(wm_path)])
     
-    if badge or watermark:
+    if badge_path.exists() or wm_path.exists():
         cmd.extend(["-filter_complex", ";".join(filters), "-map", f"[{last}]"])
     
     cmd.append(str(out_path))
@@ -146,6 +147,8 @@ def overlay_video(video_id, meta_entry):
 def run_overlay(limit=None):
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     meta = load_meta()
+    
+    log(f"[Overlay] Processing {len(meta)} entries...")
     
     processed = skipped = failed = 0
     

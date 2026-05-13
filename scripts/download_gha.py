@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-United24 Shorts Scraper for GitHub Actions
-GitHub Actions runners have IPs that YouTube doesn't block.
+United24 Shorts Scraper — Works on GitHub Actions runners
+(YouTube blocks cloud IPs, but GitHub Actions runners usually work)
 """
 import os
 import sys
@@ -10,8 +10,8 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-OUTPUT_DIR = Path("./output/raw")
-META_FILE = Path("./output/videos_meta.json")
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "./output/raw"))
+META_FILE = Path(os.environ.get("META_FILE", "./output/videos_meta.json"))
 LIMIT = int(os.environ.get("LIMIT", "12"))
 
 def log(msg):
@@ -34,6 +34,9 @@ def download_shorts():
     meta = load_meta()
     
     log(f"Downloading up to {LIMIT} Shorts from United24...")
+    log(f"Output dir: {OUTPUT_DIR.absolute()}")
+    log(f"Meta file: {META_FILE.absolute()}")
+    log(f"Existing entries: {len(meta)}")
     
     cmd = [
         "yt-dlp",
@@ -47,15 +50,27 @@ def download_shorts():
         "https://youtube.com/@united24media/shorts",
     ]
     
+    log(f"Running: {' '.join(cmd)}")
+    
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     
-    if result.returncode != 0:
-        log(f"yt-dlp stderr: {result.stderr[:500]}")
+    log(f"yt-dlp return code: {result.returncode}")
+    if result.stdout:
+        log(f"yt-dlp stdout:\n{result.stdout[:2000]}")
+    if result.stderr:
+        log(f"yt-dlp stderr:\n{result.stderr[:2000]}")
+    
+    # List files in output dir
+    all_files = list(OUTPUT_DIR.iterdir())
+    log(f"Files in {OUTPUT_DIR}: {len(all_files)}")
+    for f in all_files[:10]:
+        log(f"  {f.name}")
     
     new_videos = []
     for video_file in sorted(OUTPUT_DIR.glob("*.mp4")):
         video_id = video_file.stem
         if video_id in meta:
+            log(f"Skip (already in meta): {video_id}")
             continue
         
         info = {}
@@ -64,8 +79,8 @@ def download_shorts():
             try:
                 with open(json_file) as f:
                     info = json.load(f)
-            except:
-                pass
+            except Exception as e:
+                log(f"Error reading info for {video_id}: {e}")
         
         meta[video_id] = {
             "id": video_id,
@@ -83,6 +98,7 @@ def download_shorts():
     
     save_meta(meta)
     log(f"Downloaded {len(new_videos)} new Shorts")
+    log(f"Total meta entries: {len(meta)}")
     return new_videos
 
 def main():
