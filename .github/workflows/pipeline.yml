@@ -1,11 +1,11 @@
 name: U24 × OSMOSSAS Pipeline
 
 on:
-  schedule:
-    - cron: '17 */2 * * *'
-  workflow_dispatch:
   push:
     branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */2 * * *'
 
 permissions:
   contents: write
@@ -22,8 +22,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,30 +36,27 @@ jobs:
           python3 -m pip install -U yt-dlp
 
       - name: Generate branding assets
-        run: |
-          cd scripts
-          python3 logo_generator.py
-          cp -r ../assets ../output/ 2>/dev/null || true
+        working-directory: scripts
+        run: python3 logo_generator.py
 
       - name: Download United24 Shorts
+        working-directory: scripts
         run: |
-          cd scripts
-          LIMIT=12 python3 download_gha.py
+          export LIMIT=12
+          python3 download_gha.py
 
       - name: Apply OSMOSSAS branding
-        run: |
-          cd scripts
-          python3 overlay.py
+        working-directory: scripts
+        run: python3 overlay.py
 
       - name: Rotate videos
+        working-directory: scripts
         run: |
-          cd scripts
           python3 -c "
 import json, os
 from pathlib import Path
 
-WORKSPACE = Path('.')
-OUTPUT_DIR = WORKSPACE / '..' / 'output' / 'videos'
+OUTPUT_DIR = Path('../output/videos')
 TOP_DIR = OUTPUT_DIR / 'top'
 MAX_TOTAL = 150
 MAX_TOP = 10
@@ -85,14 +80,13 @@ print(f'Rotated: {min(len(all_videos), main_cap)} main + {len(list(TOP_DIR.glob(
 "
 
       - name: Generate gallery
+        working-directory: scripts
         run: |
-          cd scripts
           python3 -c "
 import json
 from pathlib import Path
 
-WORKSPACE = Path('.')
-OUTPUT_DIR = WORKSPACE / '..' / 'output'
+OUTPUT_DIR = Path('../output')
 meta_file = OUTPUT_DIR / 'videos_meta.json'
 
 if not meta_file.exists():
@@ -121,9 +115,10 @@ videos.sort(key=lambda x: x['date'], reverse=True)
 
 cards = []
 for v in videos:
-    title = v['title'].replace('\"', '&quot;')
+    title = v['title'].replace('\"', '\&quot;')
     date_str = f\"{v['date'][:4]}-{v['date'][4:6]}-{v['date'][6:]}\" if len(v['date']) == 8 else 'Unknown'
-    cards.append(f'''<div class=\"card\">
+    cards.append(f'''
+<div class=\"card\">
   <video controls preload=\"metadata\" poster=\"{v['thumbnail']}\" playsinline>
     <source src=\"{v['file']}\" type=\"video/mp4\">
   </video>
