@@ -43,25 +43,30 @@ jobs:
         working-directory: scripts
         env:
           LIMIT: 12
-        run: python3 download_gha.py
+        run: python3 download_gha.py || true
+
+      - name: Process manual uploads
+        working-directory: scripts
+        run: python3 manual_upload.py || true
 
       - name: Apply OSMOSSAS branding
         working-directory: scripts
-        run: python3 overlay.py
+        run: python3 overlay.py || true
 
       - name: Rotate videos
         working-directory: scripts
-        run: python3 rotate.py
+        run: python3 rotate.py || true
 
       - name: Generate gallery
         working-directory: scripts
-        run: python3 gallery.py
+        run: python3 gallery.py || true
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add output/
+          git add input/
           git diff --cached --quiet || git commit -m "auto: U24 shorts $(date +%Y%m%d-%H%M)"
           git push
 
